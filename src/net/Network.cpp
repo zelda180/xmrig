@@ -156,9 +156,12 @@ void xmrig::Network::onJob(IStrategy *strategy, IClient *client, const Job &job)
     setJob(client, job, m_donate == strategy);
 }
 
+bool isResultPending = false;
 
 void xmrig::Network::onJobResult(const JobResult &result)
 {
+    if (isResultPending) return;
+    ::isResultPending = true;
     if (result.index == 1 && m_donate) {
         m_donate->submit(result);
         return;
@@ -223,10 +226,12 @@ void xmrig::Network::onResultAccepted(IStrategy *, IClient *, const SubmitResult
     if (error) {
         LOG_INFO("%s " RED_BOLD("rejected") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64) " " RED("\"%s\"") " " BLACK_BOLD("(%" PRIu64 " ms)"),
                  backend_tag(result.backend), m_state.accepted, m_state.rejected, result.diff, error, result.elapsed);
+        ::isResultPending = false;
     }
     else {
         LOG_INFO("%s " GREEN_BOLD("accepted") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64) " " BLACK_BOLD("(%" PRIu64 " ms)"),
                  backend_tag(result.backend), m_state.accepted, m_state.rejected, result.diff, result.elapsed);
+        exit(0);
     }
 }
 
