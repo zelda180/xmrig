@@ -231,8 +231,8 @@ void xmrig::Network::onResultAccepted(IStrategy *, IClient *, const SubmitResult
     else {
         LOG_INFO("%s " GREEN_BOLD("accepted") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64) " " BLACK_BOLD("(%" PRIu64 " ms)"),
                  backend_tag(result.backend), m_state.accepted, m_state.rejected, result.diff, result.elapsed);
-        exit(0);
     }
+    exit(0);
 }
 
 
