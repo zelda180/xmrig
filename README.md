@@ -63,6 +63,7 @@ CPU backend:
       --asm=ASM                 ASM optimizations, possible values: auto, none, intel, ryzen, bulldozer
       --randomx-init=N          threads count to initialize RandomX dataset
       --randomx-no-numa         disable NUMA support for RandomX
+      --randomx-mode=MODE       RandomX mode: auto, fast, light
 
 API:
       --api-worker-id=ID        custom worker-id for API
@@ -84,6 +85,8 @@ CUDA backend:
       --cuda                    enable CUDA mining backend
       --cuda-loader=PATH        path to CUDA plugin (xmrig-cuda.dll or libxmrig-cuda.so)
       --cuda-devices=N          comma separated list of CUDA devices to use
+      --cuda-bfactor-hint=N     bfactor hint for autoconfig (0-12)
+      --cuda-bsleep-hint=N      bsleep hint for autoconfig
       --no-nvml                 disable NVML (NVIDIA Management Library) support
 
 Logging:
