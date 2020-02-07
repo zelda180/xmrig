@@ -49,7 +49,7 @@ namespace randomx {
 	public:
 		JitCompilerX86();
 		~JitCompilerX86();
-		void generateProgram(Program&, ProgramConfiguration&);
+		void generateProgram(Program&, ProgramConfiguration&, uint32_t);
 		void generateProgramLight(Program&, ProgramConfiguration&, uint32_t);
 		template<size_t N>
 		void generateSuperscalarHash(SuperscalarProgram (&programs)[N], std::vector<uint64_t> &);
@@ -69,9 +69,16 @@ namespace randomx {
 		int registerUsage[RegistersCount];
 		uint8_t* allocatedCode;
 		uint8_t* code;
+#		ifdef XMRIG_FIX_RYZEN
+		std::pair<const void*, const void*> mainLoopBounds;
+#		endif
 		int32_t codePos;
+		int32_t codePosFirst;
+		uint32_t vm_flags;
 
 		static bool BranchesWithin32B;
+		bool hasAVX;
+		bool hasXOP;
 
 		static void applyTweaks();
 		void generateProgramPrologue(Program&, ProgramConfiguration&);
@@ -116,7 +123,9 @@ namespace randomx {
 		void h_IMUL_R(const Instruction&);
 		void h_IMUL_M(const Instruction&);
 		void h_IMULH_R(const Instruction&);
+		void h_IMULH_R_BMI2(const Instruction&);
 		void h_IMULH_M(const Instruction&);
+		void h_IMULH_M_BMI2(const Instruction&);
 		void h_ISMULH_R(const Instruction&);
 		void h_ISMULH_M(const Instruction&);
 		void h_IMUL_RCP(const Instruction&);

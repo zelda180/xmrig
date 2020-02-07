@@ -41,6 +41,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "crypto/randomx/jit_compiler_a64_static.hpp"
 #endif
 
+#include "backend/cpu/Cpu.h"
+
 #include <cassert>
 
 RandomX_ConfigurationWownero::RandomX_ConfigurationWownero()
@@ -90,6 +92,11 @@ RandomX_ConfigurationArqma::RandomX_ConfigurationArqma()
 	ProgramCount = 4;
 	ScratchpadL2_Size = 131072;
 	ScratchpadL3_Size = 262144;
+}
+
+RandomX_ConfigurationSafex::RandomX_ConfigurationSafex()
+{
+	ArgonSalt = "RandomSFX\x01";
 }
 
 RandomX_ConfigurationBase::RandomX_ConfigurationBase()
@@ -157,8 +164,15 @@ RandomX_ConfigurationBase::RandomX_ConfigurationBase()
 	}
 	{
 		const uint8_t* a = (const uint8_t*)&randomx_program_read_dataset;
-		const uint8_t* b = (const uint8_t*)&randomx_program_read_dataset_sshash_init;
+		const uint8_t* b = (const uint8_t*)&randomx_program_read_dataset_ryzen;
 		memcpy(codeReadDatasetTweaked, a, b - a);
+		codeReadDatasetTweakedSize = b - a;
+	}
+	{
+		const uint8_t* a = (const uint8_t*)&randomx_program_read_dataset_ryzen;
+		const uint8_t* b = (const uint8_t*)&randomx_program_read_dataset_sshash_init;
+		memcpy(codeReadDatasetRyzenTweaked, a, b - a);
+		codeReadDatasetRyzenTweakedSize = b - a;
 	}
 	{
 		const uint8_t* a = (const uint8_t*)&randomx_program_read_dataset_sshash_init;
@@ -192,6 +206,8 @@ void RandomX_ConfigurationBase::Apply()
 #if defined(_M_X64) || defined(__x86_64__)
 	*(uint32_t*)(codeShhPrefetchTweaked + 3) = ArgonMemory * 16 - 1;
 	const uint32_t DatasetBaseMask = DatasetBaseSize - RANDOMX_DATASET_ITEM_SIZE;
+	*(uint32_t*)(codeReadDatasetRyzenTweaked + 9) = DatasetBaseMask;
+	*(uint32_t*)(codeReadDatasetRyzenTweaked + 24) = DatasetBaseMask;
 	*(uint32_t*)(codeReadDatasetTweaked + 7) = DatasetBaseMask;
 	*(uint32_t*)(codeReadDatasetTweaked + 23) = DatasetBaseMask;
 	*(uint32_t*)(codeReadDatasetLightSshInitTweaked + 59) = DatasetBaseMask;
@@ -222,14 +238,29 @@ void RandomX_ConfigurationBase::Apply()
 	CEIL_##x = CEIL_##prev + RANDOMX_FREQ_##x; \
 	for (; k < CEIL_##x; ++k) { JIT_HANDLE(x, prev); }
 
+#define INST_HANDLE2(x, func_name, prev) \
+	CEIL_##x = CEIL_##prev + RANDOMX_FREQ_##x; \
+	for (; k < CEIL_##x; ++k) { JIT_HANDLE(func_name, prev); }
+
 	INST_HANDLE(IADD_RS, NULL);
 	INST_HANDLE(IADD_M, IADD_RS);
 	INST_HANDLE(ISUB_R, IADD_M);
 	INST_HANDLE(ISUB_M, ISUB_R);
 	INST_HANDLE(IMUL_R, ISUB_M);
 	INST_HANDLE(IMUL_M, IMUL_R);
-	INST_HANDLE(IMULH_R, IMUL_M);
-	INST_HANDLE(IMULH_M, IMULH_R);
+
+#if defined(_M_X64) || defined(__x86_64__)
+	if (xmrig::Cpu::info()->hasBMI2()) {
+		INST_HANDLE2(IMULH_R, IMULH_R_BMI2, IMUL_M);
+		INST_HANDLE2(IMULH_M, IMULH_M_BMI2, IMULH_R);
+	}
+	else
+#endif
+	{
+		INST_HANDLE(IMULH_R, IMUL_M);
+		INST_HANDLE(IMULH_M, IMULH_R);
+	}
+
 	INST_HANDLE(ISMULH_R, IMULH_M);
 	INST_HANDLE(ISMULH_M, ISMULH_R);
 	INST_HANDLE(IMUL_RCP, ISMULH_M);
@@ -259,47 +290,34 @@ RandomX_ConfigurationMonero RandomX_MoneroConfig;
 RandomX_ConfigurationWownero RandomX_WowneroConfig;
 RandomX_ConfigurationLoki RandomX_LokiConfig;
 RandomX_ConfigurationArqma RandomX_ArqmaConfig;
+RandomX_ConfigurationSafex RandomX_SafexConfig;
 
 RandomX_ConfigurationBase RandomX_CurrentConfig;
 
 extern "C" {
 
-	randomx_cache *randomx_alloc_cache(randomx_flags flags) {
+	randomx_cache *randomx_create_cache(randomx_flags flags, uint8_t *memory) {
+		if (!memory) {
+			return nullptr;
+		}
+
 		randomx_cache *cache = nullptr;
 
 		try {
 			cache = new randomx_cache();
-			switch (flags & (RANDOMX_FLAG_JIT | RANDOMX_FLAG_LARGE_PAGES)) {
+			switch (flags & RANDOMX_FLAG_JIT) {
 				case RANDOMX_FLAG_DEFAULT:
-					cache->dealloc = &randomx::deallocCache<randomx::DefaultAllocator>;
-					cache->jit = nullptr;
-					cache->initialize = &randomx::initCache;
-					cache->datasetInit = &randomx::initDataset;
-					cache->memory = (uint8_t*)randomx::DefaultAllocator::allocMemory(RANDOMX_CACHE_MAX_SIZE);
+					cache->jit          = nullptr;
+					cache->initialize   = &randomx::initCache;
+					cache->datasetInit  = &randomx::initDataset;
+					cache->memory       = memory;
 					break;
 
 				case RANDOMX_FLAG_JIT:
-					cache->dealloc = &randomx::deallocCache<randomx::DefaultAllocator>;
-					cache->jit = new randomx::JitCompiler();
-					cache->initialize = &randomx::initCacheCompile;
-					cache->datasetInit = cache->jit->getDatasetInitFunc();
-					cache->memory = (uint8_t*)randomx::DefaultAllocator::allocMemory(RANDOMX_CACHE_MAX_SIZE);
-					break;
-
-				case RANDOMX_FLAG_LARGE_PAGES:
-					cache->dealloc = &randomx::deallocCache<randomx::LargePageAllocator>;
-					cache->jit = nullptr;
-					cache->initialize = &randomx::initCache;
-					cache->datasetInit = &randomx::initDataset;
-					cache->memory = (uint8_t*)randomx::LargePageAllocator::allocMemory(RANDOMX_CACHE_MAX_SIZE);
-					break;
-
-				case RANDOMX_FLAG_JIT | RANDOMX_FLAG_LARGE_PAGES:
-					cache->dealloc = &randomx::deallocCache<randomx::LargePageAllocator>;
-					cache->jit = new randomx::JitCompiler();
-					cache->initialize = &randomx::initCacheCompile;
-					cache->datasetInit = cache->jit->getDatasetInitFunc();
-					cache->memory = (uint8_t*)randomx::LargePageAllocator::allocMemory(RANDOMX_CACHE_MAX_SIZE);
+					cache->jit          = new randomx::JitCompiler();
+					cache->initialize   = &randomx::initCacheCompile;
+					cache->datasetInit  = cache->jit->getDatasetInitFunc();
+					cache->memory       = memory;
 					break;
 
 				default:
@@ -323,31 +341,16 @@ extern "C" {
 	}
 
 	void randomx_release_cache(randomx_cache* cache) {
-		assert(cache != nullptr);
-		cache->dealloc(cache);
 		delete cache;
 	}
 
-	randomx_dataset *randomx_alloc_dataset(randomx_flags flags) {
-		randomx_dataset *dataset = nullptr;
+	randomx_dataset *randomx_create_dataset(uint8_t *memory) {
+		if (!memory) {
+			return nullptr;
+		}
 
-		try {
-			dataset = new randomx_dataset();
-			if (flags & RANDOMX_FLAG_LARGE_PAGES) {
-				dataset->dealloc = &randomx::deallocDataset<randomx::LargePageAllocator>;
-				dataset->memory = (uint8_t*)randomx::LargePageAllocator::allocMemory(RANDOMX_DATASET_MAX_SIZE);
-			}
-			else {
-				dataset->dealloc = &randomx::deallocDataset<randomx::DefaultAllocator>;
-				dataset->memory = (uint8_t*)randomx::DefaultAllocator::allocMemory(RANDOMX_DATASET_MAX_SIZE);
-			}
-		}
-		catch (std::exception &ex) {
-			if (dataset != nullptr) {
-				randomx_release_dataset(dataset);
-				dataset = nullptr;
-			}
-		}
+		auto dataset = new randomx_dataset();
+		dataset->memory = memory;
 
 		return dataset;
 	}
@@ -372,8 +375,6 @@ extern "C" {
 	}
 
 	void randomx_release_dataset(randomx_dataset *dataset) {
-		assert(dataset != nullptr);
-		dataset->dealloc(dataset);
 		delete dataset;
 	}
 
@@ -431,6 +432,7 @@ extern "C" {
 			}
 
 			vm->setScratchpad(scratchpad);
+			vm->setFlags(flags);
 		}
 		catch (std::exception &ex) {
 			delete vm;

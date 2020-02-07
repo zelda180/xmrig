@@ -59,11 +59,12 @@ xmrig::CpuWorker<N>::CpuWorker(size_t id, const CpuLaunchData &data) :
     m_algorithm(data.algorithm),
     m_assembly(data.assembly),
     m_hwAES(data.hwAES),
+    m_yield(data.yield),
     m_av(data.av()),
     m_miner(data.miner),
     m_ctx()
 {
-    m_memory = new VirtualMemory(m_algorithm.l3() * N, data.hugePages, true, m_node);
+    m_memory = new VirtualMemory(m_algorithm.l3() * N, data.hugePages, false, true, m_node);
 }
 
 
@@ -96,7 +97,7 @@ void xmrig::CpuWorker<N>::allocateRandomX_VM()
     }
 
     if (!m_vm) {
-        m_vm = new RxVm(dataset, m_memory->scratchpad(), !m_hwAES);
+        m_vm = new RxVm(dataset, m_memory->scratchpad(), !m_hwAES, m_assembly);
     }
 }
 #endif
@@ -154,7 +155,8 @@ bool xmrig::CpuWorker<N>::selfTest()
 
 #   ifdef XMRIG_ALGO_CN_PICO
     if (m_algorithm.family() == Algorithm::CN_PICO) {
-        return verify(Algorithm::CN_PICO_0, test_output_pico_trtl);
+        return verify(Algorithm::CN_PICO_0, test_output_pico_trtl) &&
+               verify(Algorithm::CN_PICO_TLO, test_output_pico_tlo);
     }
 #   endif
 
@@ -246,6 +248,10 @@ void xmrig::CpuWorker<N>::start()
             }
 
             m_count += N;
+
+            if (m_yield) {
+                std::this_thread::yield();
+            }
         }
 
         consumeJob();
