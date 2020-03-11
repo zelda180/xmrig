@@ -26,7 +26,6 @@
 #define XMRIG_ICONFIG_H
 
 
-#include "crypto/common/Algorithm.h"
 #include "rapidjson/fwd.h"
 
 
@@ -66,6 +65,7 @@ public:
         UserAgentKey         = 1008,
         UserKey              = 'u',
         UserpassKey          = 'O',
+        ProxyKey             = 'x',
         VerboseKey           = 1100,
         TlsKey               = 1013,
         FingerprintKey       = 1014,
@@ -99,6 +99,7 @@ public:
         CPUMaxThreadsKey     = 1026,
         MemoryPoolKey        = 1027,
         YieldKey             = 1030,
+        AstroBWTMaxSizeKey   = 1034,
 
         // xmrig amd
         OclPlatformKey       = 1400,
