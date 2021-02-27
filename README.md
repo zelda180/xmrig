@@ -32,7 +32,6 @@ The preferred way to configure the miner is the [JSON config file](https://xmrig
 or
 
 *zelda180 XMR: 
-
 48xT8aQVDipUPicHXiHxgQCJvoFBgQaWTWtNENB7TccSWjhcuc2vKS3Rikz4ZLUqKZAoQCZcEBESR9CvLpE7f7zt2jZgNQF
 
 ## Developers
